@@ -86,7 +86,6 @@ class ServoControlGUI:
             self.servo_values[i] = 90
             value_var.set("90°")
         self.status_var.set("All servos centered at 90°")
-        
     def reset_all(self):
         for i, (slider, value_var) in enumerate(self.sliders):
             slider.set(0)
