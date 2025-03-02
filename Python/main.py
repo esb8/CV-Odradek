@@ -26,6 +26,7 @@ while True:
 
     if command == "exit":
         exit()
+        
 # Template Code
 # Implement 3 commands 
 # Implement sensor
