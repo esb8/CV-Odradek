@@ -95,12 +95,11 @@ class ServoControlGUI:
 
 '''      
     def center_all(self):
-        if self.controller.center_all():
-            # Update all sliders to match
-            for i, (slider, value_var) in enumerate(self.sliders):
-                slider.set(90)
-                value_var.set("90°")
-            self.status_var.set("All servos centered at 90°")
+        for i, (slider, value_var) in enumerate(self.sliders):
+            slider.set(90)
+            self.servo_values[i] = 90
+            value_var.set("90°")
+        self.status_var.set("All servos centered at 90°")
         
     def reset_all(self):
         if self.controller.reset_all():
