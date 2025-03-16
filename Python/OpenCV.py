@@ -104,8 +104,20 @@ def reconnect_camera(url):
     except Exception as e:
         print(f"Reconnection error: {e}")
         return None
-if __name__ == '__main__':
+    
+def change_resolution(URL, idx):
+    set_resolution(URL, index=idx, verbose=True)
+    cap.release()
+    cap = reconnect_camera(URL)
+
+def run_camera():
     try:
+        # Initialize video capture
+        cap = cv2.VideoCapture(URL + ":81/stream")
+        if not cap.isOpened():
+            print("Failed to open video stream")
+            return
+            
         # Set initial resolution
         set_resolution(URL, index=8)
         
@@ -119,11 +131,11 @@ if __name__ == '__main__':
                     
                     if not ret:
                         print("Failed to read frame")
-                        time.sleep(1)  # Wait a bit before trying again
+                        time.sleep(1)
                         continue
                     
                     frame_count += 1
-                    if frame_count % 30 == 0:  # Calculate FPS every 30 frames
+                    if frame_count % 30 == 0:
                         fps = frame_count / (time.time() - start_time)
                         print(f"FPS: {fps:.2f}")
                         frame_count = 0
@@ -134,7 +146,6 @@ if __name__ == '__main__':
                     
                     faces = face_classifier.detectMultiScale(gray)
                     for (x, y, w, h) in faces:
-                        center = (x + w//2, y + h//2)
                         frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 4)
                 
                     cv2.imshow("ESP32 Camera Feed", frame)
@@ -178,3 +189,7 @@ if __name__ == '__main__':
         if 'cap' in locals() and cap is not None:
             cap.release()
         print("Resources released")
+
+# Keep original functionality when run directly
+if __name__ == '__main__':
+    run_camera()
