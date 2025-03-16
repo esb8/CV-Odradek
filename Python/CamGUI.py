@@ -16,6 +16,15 @@ class ESP32CameraApp:
         # Get URL from imported module
         self.url = OpenCV.URL
         
+        # Face distance tracking constants
+        self.KNOWN_DISTANCE = 30.0  # Distance in cm during calibration
+        self.KNOWN_FACE_WIDTH = 14.3  # Average human face width in cm
+        self.focal_length = None  # Will be calculated during calibration
+        
+        # Distance tracking variables
+        self.distance_history = []  # For smoothing
+        self.distance_tracking_enabled = False
+        
         # Initialize camera
         self.init_camera()
         
@@ -94,16 +103,32 @@ class ESP32CameraApp:
         face_check = ttk.Checkbutton(control_frame, text="Face Detection", variable=self.face_var)
         face_check.pack(side=tk.LEFT, padx=20)
         
-        # Quality control
-        quality_label = ttk.Label(control_frame, text="Quality:")
-        quality_label.pack(side=tk.LEFT, padx=5)
+        # Distance tracking toggle
+        self.distance_var = tk.BooleanVar(value=False)
+        distance_check = ttk.Checkbutton(control_frame, text="Distance Tracking", 
+                                        variable=self.distance_var)
+        distance_check.pack(side=tk.LEFT, padx=5)
         
+        # Calibrate button
+        calibrate_btn = ttk.Button(control_frame, text="Calibrate Distance", 
+                                  command=self.calibrate_distance)
+        calibrate_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Quality control frame
+        quality_frame = ttk.Frame(control_frame)
+        quality_frame.pack(side=tk.LEFT, padx=10)
+        
+        # Create a label to display the current quality value
+        self.quality_label = ttk.Label(quality_frame, text=f"Quality: 10")
+        self.quality_label.pack(side=tk.TOP)
+        
+        # Quality slider
         self.quality_var = tk.IntVar(value=10)
-        quality_scale = ttk.Scale(control_frame, from_=10, to=63, variable=self.quality_var, 
+        quality_scale = ttk.Scale(quality_frame, from_=10, to=63, variable=self.quality_var, 
+                                 command=self.update_quality_label,
                                  orient=tk.HORIZONTAL, length=100)
-        quality_scale.pack(side=tk.LEFT, padx=5)
-
-    
+        quality_scale.pack(side=tk.TOP)
+        
         # Apply quality button
         quality_btn = ttk.Button(control_frame, text="Apply Quality", 
                                 command=self.change_quality)
@@ -124,6 +149,60 @@ class ESP32CameraApp:
         
         # Bind resize event
         self.window.bind("<Configure>", self.on_resize)
+    
+    def update_quality_label(self, event=None):
+        """Update the quality label with the current slider value"""
+        self.quality_label.config(text=f"Quality: {int(self.quality_var.get())}")
+        
+    def calibrate_distance(self):
+        """Calibrate the system for distance measurement"""
+        self.status_var.set("Calibrating distance measurement...")
+        
+        # Wait for a stable frame
+        time.sleep(2)
+        
+        if self.current_frame is not None:
+            # Convert to grayscale for face detection
+            gray = cv2.cvtColor(self.current_frame, cv2.COLOR_RGB2GRAY)
+            gray = cv2.equalizeHist(gray)
+            
+            # Detect face
+            faces = self.face_classifier.detectMultiScale(gray)
+            
+            if len(faces) > 0:
+                # Use the first face detected
+                (x, y, w, h) = faces[0]
+                
+                # Calculate focal length using triangle similarity
+                self.focal_length = (w * self.KNOWN_DISTANCE) / self.KNOWN_FACE_WIDTH
+                
+                self.status_var.set(f"Calibration complete. Focal length: {self.focal_length:.2f}")
+                print(self.status_var)
+                self.distance_tracking_enabled = True
+                self.distance_var.set(True)
+                return True
+            else:
+                self.status_var.set("Calibration failed: No face detected")
+                return False
+        else:
+            self.status_var.set("Calibration failed: No frame available")
+            return False
+    
+    def calculate_distance(self, face_width):
+        """Calculate distance from face to camera"""
+        if face_width == 0 or self.focal_length is None:
+            return 0
+        
+        # Calculate distance using triangle similarity
+        distance = (self.KNOWN_FACE_WIDTH * self.focal_length) / face_width
+        
+        # Apply smoothing with moving average
+        self.distance_history.append(distance)
+        if len(self.distance_history) > 5:  # Keep last 5 measurements
+            self.distance_history.pop(0)
+        
+        # Return smoothed distance
+        return sum(self.distance_history) / len(self.distance_history)
         
     def on_resize(self, event):
         # Only process if it's the main window being resized
@@ -214,8 +293,17 @@ class ESP32CameraApp:
                             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                             gray = cv2.equalizeHist(gray)
                             faces = self.face_classifier.detectMultiScale(gray)
+                            
                             for (x, y, w, h) in faces:
+                                # Draw rectangle around face
                                 frame = cv2.rectangle(frame, (x, y), (x + w, y + h), (255, 255, 0), 4)
+                                
+                                # Calculate and display distance if enabled and calibrated
+                                if self.distance_var.get() and self.focal_length is not None:
+                                    distance = self.calculate_distance(w)
+                                    distance_text = f"Distance: {distance:.2f} cm"
+                                    cv2.putText(frame, distance_text, (x, y - 10), 
+                                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                         except Exception as e:
                             print(f"Face detection error: {e}")
                     
